@@ -1,6 +1,10 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import axios from "axios";
+import { BASE_URL, ENDPOINTS } from "../../utils/APIENDPOINTS";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { login as userLogin } from "./userSlice";
 
+// Types
 export interface User {
   _id: string;
   name: string;
@@ -15,105 +19,138 @@ export interface AuthState {
   error: string | null;
 }
 
-interface FormData {
-  name?: string;
-  email: string;
-  password: string;
-}
-
-// -------------------- REGISTER --------------------
-export const registerUser = createAsyncThunk<User, FormData>(
-  "auth/register",
-  async (formData, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.post<User>(
-        "http://localhost:5000/api/auth/register",
-        formData
-      );
-      return data;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || "Registration failed");
-    }
-  }
-);
-
-// -------------------- LOGIN --------------------
-interface LoginResponse {
+interface AuthResponse {
+  _id: string;
   name: string;
+  email: string;
   role: "customer" | "admin" | "superadmin";
   token: string;
 }
 
-export const loginUser = createAsyncThunk<LoginResponse, { email: string; password: string }>(
-  "http://localhost:5000",
-  async (form, thunkAPI) => {
+interface AuthCredentials {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+// Async Thunks
+export const initializeAuth = createAsyncThunk(
+  "auth/initialize",
+  async (_, { dispatch }) => {
+    const userData = await AsyncStorage.getItem("user");
+    const parsed = userData ? JSON.parse(userData) : null;
+    if (parsed) {
+      // keep user slice in sync so UI knows user is logged in
+      dispatch(userLogin(parsed));
+    }
+    return parsed;
+  }
+);
+
+export const register = createAsyncThunk<AuthResponse, AuthCredentials>(
+  "auth/register",
+  async (credentials, { rejectWithValue }) => {
     try {
-      const response = await axios.post<LoginResponse>(
-        "/api/auth/login",
-        form
+      const { data } = await axios.post(
+        `${ENDPOINTS.AUTH}/register`,
+        credentials
       );
-      return response.data;
-    } catch (err: any) {
-      return thunkAPI.rejectWithValue(err.response?.data?.message || err.message);
+      await AsyncStorage.setItem("user", JSON.stringify(data));
+      return data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Registration failed"
+      );
     }
   }
 );
 
-// -------------------- INITIAL STATE --------------------
+export const login = createAsyncThunk<AuthResponse, AuthCredentials>(
+  "auth/login",
+  async (credentials, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(
+        `${BASE_URL}${ENDPOINTS.AUTH}/login`,
+        credentials
+      );
+      
+      const data = response.data;
+      if (!data._id || !data.token) {
+        return rejectWithValue("Invalid response from server");
+      }
+
+      await AsyncStorage.setItem("user", JSON.stringify(data));
+      return data;
+    } catch (error: any) {
+      if (error.response?.data?.message) {
+        return rejectWithValue(error.response.data.message);
+      } else if (error.message === "Network Error") {
+        return rejectWithValue("Network error. Please check your connection");
+      } else {
+        return rejectWithValue("Login failed. Please try again");
+      }
+    }
+  }
+);
+
 const initialState: AuthState = {
   user: null,
   loading: false,
   error: null,
 };
 
-// -------------------- SLICE --------------------
 const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
     logout: (state) => {
       state.user = null;
+      AsyncStorage.removeItem("user");
+    },
+    clearError: (state) => {
+      state.error = null;
     },
   },
   extraReducers: (builder) => {
+    // Initialize
+    builder
+      .addCase(initializeAuth.fulfilled, (state, action) => {
+        state.user = action.payload;
+      });
+
     // Register
     builder
-      .addCase(registerUser.pending, (state) => {
+      .addCase(register.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(registerUser.fulfilled, (state, action) => {
+      .addCase(register.fulfilled, (state, action) => {
         state.loading = false;
         state.user = action.payload;
+        state.error = null;
       })
-      .addCase(registerUser.rejected, (state, action) => {
+      .addCase(register.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });
 
     // Login
     builder
-      .addCase(loginUser.pending, (state) => {
+      .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(loginUser.fulfilled, (state, action) => {
+      .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
-        // Map LoginResponse to User
-        state.user = {
-          _id: "", // backend should return _id if available
-          name: action.payload.name,
-          email: "", // backend can return email if needed
-          role: action.payload.role,
-          token: action.payload.token,
-        };
+        state.user = action.payload;
+        state.error = null;
       })
-      .addCase(loginUser.rejected, (state, action) => {
+      .addCase(login.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });
   },
 });
 
-export const { logout } = authSlice.actions;
+export const { logout, clearError } = authSlice.actions;
 export default authSlice.reducer;

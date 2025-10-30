@@ -183,6 +183,13 @@ export default function AdminDashboard() {
     );
   }
 
+  // Role guard: only admins and superadmins should access this screen
+  if (user && user.role !== 'admin' && user.role !== 'superadmin') {
+    // redirect non-admin users back to the main tabs
+    router.replace('/(tabs)' as any);
+    return null;
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>

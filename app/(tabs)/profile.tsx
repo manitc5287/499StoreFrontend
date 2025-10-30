@@ -14,12 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "../../redux/store";
 import { logout, updateUser } from "../../redux/slices/userSlice";
+import { logout as authLogout } from "../../redux/slices/authSlice";
 import { useToast } from "../../contexts/ToastContext";
-import { BASE_URL } from "../../utils/APIENDPOINTS.js";
+import { BASE_URL, ENDPOINTS } from "../../utils/APIENDPOINTS.js";
 import { router } from "expo-router";
 
 export default function ProfileScreen() {
   const { user, loggedIn } = useSelector((state: RootState) => state.user);
+  const authUser = useSelector((state: RootState) => state.auth.user);
   const dispatch = useDispatch<AppDispatch>();
   const { showToast } = useToast();
   
@@ -72,10 +74,11 @@ export default function ProfileScreen() {
     }
 
     try {
-      const response = await fetch(`${BASE_URL}api/users/update`, {
+      const response = await fetch(`${BASE_URL}${ENDPOINTS.USERS}/update`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(authUser?.token ? { Authorization: `Bearer ${authUser.token}` } : {}),
         },
         body: JSON.stringify({
           name: editData.name,
@@ -116,10 +119,11 @@ export default function ProfileScreen() {
     }
 
     try {
-      const response = await fetch(`${BASE_URL}api/users/change-password`, {
+      const response = await fetch(`${BASE_URL}${ENDPOINTS.USERS}/change-password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(authUser?.token ? { Authorization: `Bearer ${authUser.token}` } : {}),
         },
         body: JSON.stringify({
           currentPassword: passwordData.currentPassword,
@@ -156,7 +160,9 @@ export default function ProfileScreen() {
           text: 'Logout', 
           style: 'destructive',
           onPress: () => {
+            // Clear both user and auth state
             dispatch(logout());
+            dispatch(authLogout());
             showToast('Logged out successfully', 'info');
             // Navigate to login screen
             router.replace('/login');
@@ -175,6 +181,12 @@ export default function ProfileScreen() {
         </View>
       </SafeAreaView>
     );
+  }
+
+  // If an admin or superadmin somehow lands on the profile tab, redirect them to admin dashboard
+  if (user && (user.role === 'admin' || user.role === 'superadmin')) {
+    router.replace('/admin-dashboard' as any);
+    return null;
   }
 
   return (

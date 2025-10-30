@@ -1,22 +1,21 @@
+import { Ionicons } from "@expo/vector-icons";
+import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
+  View
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Link, router } from "expo-router";
 import { useDispatch } from "react-redux";
-import { AppDispatch, RootState } from "../redux/store";
-import { BASE_URL, login } from "../utils/APIENDPOINTS.js";
-import { login as loginAction } from "../redux/slices/userSlice";
 import { useToast } from "../contexts/ToastContext";
+import { login as authLogin } from "../redux/slices/authSlice";
+import { login as userLogin } from "../redux/slices/userSlice";
+import { AppDispatch } from "../redux/store";
 
 export default function LoginScreen() {
   const dispatch = useDispatch<AppDispatch>();
@@ -54,45 +53,26 @@ export default function LoginScreen() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${BASE_URL}${login}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
-      });
+      const result = await dispatch(authLogin({
+        email: formData.email, 
+        password: formData.password 
+      })).unwrap();
 
-      debugger;
+      // Populate user slice so profile and other areas know user is logged in
+      dispatch(userLogin(result));
 
-      const data = await response.json();
+      // Login successful
+      showToast("Login successful!", "success");
 
-      if (response.ok) {
-
-        debugger
-        // Login successful
-        dispatch(loginAction(data.user));
-        showToast("Login successful!", "success");
-
-        // Navigate based on user role
-        if (data.user.role === "superadmin" || data.user.role === "admin") {
-          router.replace("/admin-dashboard" as any);
-        } else {
-          router.replace("/(tabs)" as any);
-        }
+      // Navigate based on user role
+      if (result.role === "superadmin" || result.role === "admin") {
+        router.replace("/admin-dashboard" as any);
       } else {
-        // Login failed
-        showToast(
-          data.message || "Invalid credentials. Please try again.",
-          "error"
-        );
+        router.replace("/(tabs)" as any);
       }
-    } catch (error) {
-      console.error("Login error:", error);
+    } catch (error: any) {
       showToast(
-        "Network error. Please check your connection and try again.",
+        error,
         "error"
       );
     } finally {
@@ -188,7 +168,7 @@ export default function LoginScreen() {
 
           {/* Register Link */}
           <View style={styles.registerSection}>
-            <Text style={styles.registerText}>Don't have an account? </Text>
+            <Text style={styles.registerText}>Dont have an account? </Text>
             <Link href="/register" asChild>
               <TouchableOpacity>
                 <Text style={styles.registerLink}>Sign Up</Text>

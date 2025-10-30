@@ -69,7 +69,7 @@ export default function AddAddressScreen() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: user._id,
+          userId: user?._id,
           addressData: formData,
         }),
       });
