@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+
 import {
   View,
   Text,
@@ -13,12 +15,24 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../redux/store';
+import { addStoreAddress, updateStoreAddress, fetchStoreAddresses, deleteStoreAddress } from '../redux/slices/storeSlice';
 import { logout } from '../redux/slices/userSlice';
 import { useToast } from '../contexts/ToastContext';
 import { router } from 'expo-router';
 import { BASE_URL } from '../utils/APIENDPOINTS.js';
 
 export default function AdminDashboard() {
+
+  type Store = {
+  _id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  phone?: string;
+};
+
   const { user, loggedIn } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch<AppDispatch>();
   const { showToast } = useToast();
@@ -45,6 +59,96 @@ export default function AdminDashboard() {
     stock: '',
     tags: '',
   });
+
+  // Store address management state
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [storeData, setStoreData] = useState<Omit<Store, '_id'>>({
+    name: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    phone: '',
+  });
+  const stores = useSelector((state: RootState) => state.store.stores);
+  const storeLoading = useSelector((state: RootState) => state.store.loading);
+  // Fetch stores for superadmin
+  useEffect(() => {
+    if (user && user.role === 'superadmin' && user.token) {
+      dispatch(fetchStoreAddresses(user.token));
+    }
+  }, [user, dispatch]);
+
+  const handleStoreSubmit = async () => {
+    if (!storeData.name || !storeData.address || !storeData.city || !storeData.state || !storeData.pincode) {
+      showToast('Please fill all required fields', 'error');
+      return;
+    }
+    if (!user || !user.token) {
+      showToast('User not authenticated', 'error');
+      return;
+    }
+    if (editingStore) {
+      dispatch(updateStoreAddress({ id: editingStore._id, data: storeData, token: user.token }))
+        .unwrap()
+        .then(() => {
+          showToast('Store updated!', 'success');
+          setShowStoreModal(false);
+          setStoreData({ name: '', address: '', city: '', state: '', pincode: '', phone: '' });
+          setEditingStore(null);
+        })
+        .catch((err: any) => {
+          showToast(err || 'Update failed', 'error');
+        });
+    } else {
+      dispatch(addStoreAddress({ data: storeData, token: user.token }))
+        .unwrap()
+        .then(() => {
+          showToast('Store added!', 'success');
+          setShowStoreModal(false);
+          setStoreData({ name: '', address: '', city: '', state: '', pincode: '', phone: '' });
+        })
+        .catch((err: any) => {
+          showToast(err || 'Add failed', 'error');
+        });
+    }
+  };
+
+  const handleEditStore = (store: Store) => {
+    setEditingStore(store);
+    setStoreData({
+      name: store.name,
+      address: store.address,
+      city: store.city,
+      state: store.state,
+      pincode: store.pincode,
+      phone: store.phone || '',
+    });
+    setShowStoreModal(true);
+  };
+
+  const handleDeleteStore = (storeId: string) => {
+    if (!user || !user.token) {
+      showToast('User not authenticated', 'error');
+      return;
+    }
+    Alert.alert('Delete Store', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: () => {
+          dispatch(deleteStoreAddress({ id: storeId, token: user.token }))
+            .unwrap()
+            .then(() => {
+              showToast('Store deleted!', 'success');
+            })
+            .catch((err: any) => {
+              showToast(err || 'Delete failed', 'error');
+            });
+        }
+      }
+    ]);
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -235,7 +339,6 @@ export default function AdminDashboard() {
         {/* Admin Actions */}
         <View style={styles.actionsContainer}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          
           <TouchableOpacity 
             style={styles.actionButton}
             onPress={() => setShowAddProductModal(true)}
@@ -244,36 +347,167 @@ export default function AdminDashboard() {
             <Text style={styles.actionButtonText}>Add Product</Text>
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons name="list-outline" size={24} color="#4CAF50" />
             <Text style={styles.actionButtonText}>Manage Products</Text>
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons name="people-outline" size={24} color="#2196F3" />
             <Text style={styles.actionButtonText}>Manage Users</Text>
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons name="analytics-outline" size={24} color="#9C27B0" />
             <Text style={styles.actionButtonText}>Analytics</Text>
             <Ionicons name="chevron-forward" size={20} color="#999" />
           </TouchableOpacity>
-
           {user.role === 'superadmin' && (
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => setShowCreateAdminModal(true)}
-            >
-              <Ionicons name="person-add-outline" size={24} color="#FF5722" />
-              <Text style={styles.actionButtonText}>Create Admin</Text>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => setShowCreateAdminModal(true)}
+              >
+                <Ionicons name="person-add-outline" size={24} color="#FF5722" />
+                <Text style={styles.actionButtonText}>Create Admin</Text>
+                <Ionicons name="chevron-forward" size={20} color="#999" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => {
+                  setShowStoreModal(true);
+                  setEditingStore(null);
+                  setStoreData({ name: '', address: '', city: '', state: '', pincode: '', phone: '' });
+                }}
+              >
+                <Ionicons name="location-outline" size={24} color="#FFC107" />
+                <Text style={styles.actionButtonText}>Add Store Address</Text>
+                <Ionicons name="chevron-forward" size={20} color="#999" />
+              </TouchableOpacity>
+            </>
           )}
         </View>
+      {/* Store Address List for Superadmin */}
+      {user.role === 'superadmin' && (
+        <View style={styles.storesSection}>
+          <Text style={styles.sectionTitle}>Manage Store Addresses</Text>
+          {storeLoading ? (
+            <Text style={{ textAlign: 'center', marginVertical: 12 }}>Loading...</Text>
+          ) : stores.length === 0 ? (
+            <Text style={{ textAlign: 'center', marginVertical: 12 }}>No stores found.</Text>
+          ) : (
+            stores.map((store) => (
+              <View key={store._id} style={styles.storeCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeName}>{store.name}</Text>
+                  <Text style={styles.storeAddress}>{store.address}, {store.city}, {store.state} - {store.pincode}</Text>
+                  {store.phone && <Text style={styles.storePhone}>Phone: {store.phone}</Text>}
+                </View>
+                <TouchableOpacity onPress={() => handleEditStore(store)} style={styles.storeEditBtn}>
+                  <Ionicons name="create-outline" size={20} color="#2196F3" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteStore(store._id)} style={styles.storeDeleteBtn}>
+                  <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+      {/* Store Address Modal */}
+      <Modal
+        visible={showStoreModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowStoreModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{editingStore ? 'Edit Store Address' : 'Add Store Address'}</Text>
+              <TouchableOpacity onPress={() => setShowStoreModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Store Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.name}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, name: text }))}
+                  placeholder="Enter store name"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Address *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.address}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, address: text }))}
+                  placeholder="Enter address"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>City *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.city}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, city: text }))}
+                  placeholder="Enter city"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>State *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.state}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, state: text }))}
+                  placeholder="Enter state"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Pincode *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.pincode}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, pincode: text }))}
+                  placeholder="Enter pincode"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Phone</Text>
+                <TextInput
+                  style={styles.input}
+                  value={storeData.phone}
+                  onChangeText={text => setStoreData(prev => ({ ...prev, phone: text }))}
+                  placeholder="Enter phone number"
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.cancelButton} 
+                  onPress={() => {
+                    setShowStoreModal(false);
+                    setEditingStore(null);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.createButton} 
+                  onPress={handleStoreSubmit}
+                >
+                  <Text style={styles.createButtonText}>{editingStore ? 'Update Store' : 'Add Store'}</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       </ScrollView>
 
       {/* Create Admin Modal */}
@@ -596,6 +830,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  storesSection: {
+    marginHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  storeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  storeName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  storeAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  storePhone: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  storeEditBtn: {
+    marginLeft: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#E3F2FD',
+  },
+  storeDeleteBtn: {
+    marginLeft: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#FFEBEE',
   },
   statsContainer: {
     flexDirection: 'row',

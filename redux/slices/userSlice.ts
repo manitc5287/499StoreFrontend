@@ -8,6 +8,7 @@ interface User {
   role: string;
   createdAt: string;
   updatedAt: string;
+  token: string;
 }
 
 const userSlice = createSlice({
